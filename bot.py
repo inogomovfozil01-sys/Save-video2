@@ -74,9 +74,9 @@ def subscribe_keyboard():
     keyboard = []
     for ch in MANDATORY_CHANNELS:
         keyboard.append([
-            InlineKeyboardButton(f"Подписаться {ch}", url=f"https://t.me/{ch.replace('@','')}")
+            InlineKeyboardButton(f"📢 Подписаться {ch}", url=f"https://t.me/{ch.replace('@','')}")
         ])
-    keyboard.append([InlineKeyboardButton("Проверить", callback_data="check_subscribe")])
+    keyboard.append([InlineKeyboardButton("✅ Проверить", callback_data="check_subscribe")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -119,9 +119,12 @@ async def check_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     if await check_subscriptions(q.from_user.id, context.bot):
-        await q.edit_message_text("Подписка подтверждена.")
+        await q.edit_message_text("✅ Подписка подтверждена.")
     else:
-        await q.edit_message_text("Ты не подписался.", reply_markup=subscribe_keyboard())
+        await q.edit_message_text(
+            "❌ Ты не подписался.",
+            reply_markup=subscribe_keyboard()
+        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -138,7 +141,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await update.message.reply_text("Скачиваю...")
+    await update.message.reply_text("⏳ Скачиваю...")
 
     base = f"media_{update.effective_user.id}_{int(time.time())}"
     filename = base + ".%(ext)s"
@@ -147,14 +150,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info = await loop.run_in_executor(None, lambda: download_media(url, filename))
 
     if not info or not info.get("ext"):
-        await update.message.reply_text("Не удалось получить медиа.")
+        await update.message.reply_text("❌ Не удалось получить медиа.")
         return
 
     ext = info["ext"]
     file_path = f"{base}.{ext}"
 
     if not os.path.exists(file_path):
-        await update.message.reply_text("Файл не найден.")
+        await update.message.reply_text("❌ Файл не найден.")
         return
 
     title = info.get("title", "Медиа")
@@ -191,10 +194,17 @@ def main():
         pool_timeout=60
     )
 
-    app = Application.builder().token(BOT_TOKEN).request(request).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .request(request)
+        .build()
+    )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(check_subscribe, pattern="check_subscribe"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
     app.run_polling()
 
 
