@@ -3,23 +3,31 @@ import json
 import time
 import asyncio
 import yt_dlp
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ContextTypes, filters
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
 )
 from telegram.request import HTTPXRequest
+
+logging.basicConfig(level=logging.CRITICAL)
 
 CONFIG_FILE = "config.json"
 USERS_FILE = "users.json"
 COOKIES_FILE = "cookies.txt"
+
 
 if not os.path.exists(CONFIG_FILE):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump({
             "bot_token": "PUT_YOUR_NEW_TOKEN_HERE",
             "mandatory_channels": ["@DevZone_IT"],
-            "max_file_size_gb": 2
+            "max_file_size_gb": 1
         }, f, ensure_ascii=False, indent=2)
 
 config = json.load(open(CONFIG_FILE, "r", encoding="utf-8"))
@@ -66,9 +74,9 @@ def subscribe_keyboard():
     keyboard = []
     for ch in MANDATORY_CHANNELS:
         keyboard.append([
-            InlineKeyboardButton(f"📢 Подписаться {ch}", url=f"https://t.me/{ch.replace('@','')}")
+            InlineKeyboardButton(f"Подписаться {ch}", url=f"https://t.me/{ch.replace('@','')}")
         ])
-    keyboard.append([InlineKeyboardButton("✅ Проверить", callback_data="check_subscribe")])
+    keyboard.append([InlineKeyboardButton("Проверить", callback_data="check_subscribe")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -84,8 +92,8 @@ def download_media(url, filename):
         "max_filesize": MAX_FILE_SIZE,
         "concurrent_fragment_downloads": 8,
         "http_chunk_size": 10 * 1024 * 1024,
-        "retries": 5,
-        "fragment_retries": 5,
+        "retries": 3,
+        "fragment_retries": 3,
         "socket_timeout": 15,
         "js_runtimes": {"node": {}}
     }
@@ -100,23 +108,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_user(update.effective_user)
     if not await check_subscriptions(update.effective_user.id, context.bot):
         await update.message.reply_text(
-            "Подпишись на все каналы, чтобы пользоваться ботом.",
+            "Подпишись на канал, чтобы пользоваться ботом.",
             reply_markup=subscribe_keyboard()
         )
         return
-    await update.message.reply_text("Кидай ссылку с TikTok, YouTube, Instagram или Pinterest.")
+    await update.message.reply_text("Отправь ссылку на видео или фото.")
 
 
 async def check_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     if await check_subscriptions(q.from_user.id, context.bot):
-        await q.edit_message_text("✅ Подписка подтверждена. Можешь отправлять ссылки.")
+        await q.edit_message_text("Подписка подтверждена.")
     else:
-        await q.edit_message_text(
-            "❌ Ты не подписался на все каналы.",
-            reply_markup=subscribe_keyboard()
-        )
+        await q.edit_message_text("Ты не подписался.", reply_markup=subscribe_keyboard())
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,28 +133,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await check_subscriptions(update.effective_user.id, context.bot):
         await update.message.reply_text(
-            "Сначала подпишись на каналы.",
+            "Сначала подпишись.",
             reply_markup=subscribe_keyboard()
         )
         return
 
-    await update.message.reply_text("⏳ Скачиваю...")
+    await update.message.reply_text("Скачиваю...")
 
     base = f"media_{update.effective_user.id}_{int(time.time())}"
     filename = base + ".%(ext)s"
-    loop = asyncio.get_running_loop()
 
+    loop = asyncio.get_running_loop()
     info = await loop.run_in_executor(None, lambda: download_media(url, filename))
 
     if not info or not info.get("ext"):
-        await update.message.reply_text("❌ Не удалось получить медиа.")
+        await update.message.reply_text("Не удалось получить медиа.")
         return
 
     ext = info["ext"]
     file_path = f"{base}.{ext}"
 
     if not os.path.exists(file_path):
-        await update.message.reply_text("❌ Файл не был создан.")
+        await update.message.reply_text("Файл не найден.")
         return
 
     title = info.get("title", "Медиа")
@@ -164,8 +169,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 f.seek(0)
                 await update.message.reply_document(document=f, caption=title)
+    except:
+        pass
     finally:
-        os.remove(file_path)
+        try:
+            os.remove(file_path)
+        except:
+            pass
 
     users = load_users()
     uid = str(update.effective_user.id)
